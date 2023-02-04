@@ -1,0 +1,96 @@
+hydra:
+  run:
+    dir: /home/artermiloff/PycharmProjects/PyTorch-DeepFloorplan/experiment_logs/${general.name}/train_${now:%Y%m%d_%H%M%S}
+
+
+general:
+  name: FPR_121_v2_room_bathroom_smaller_cycle_rotate90_ADD_DOOR_UTILITY
+  device: cuda
+  seed: 8
+  epochs: 60
+  num_workers: 6
+  boundary_channels: 5
+  room_channels: 4
+  shuffle_type: standard # standard random none
+  train_batch_size: 1
+  val_batch_size: 1
+  model_ckpt:
+
+model:
+  _target_: net.DFPmodel
+  boundary_channels: ${general.boundary_channels}
+  room_channels: ${general.room_channels}
+  interpolation_size: 512
+  pretrained: True
+  freeze: True
+
+optimizer:
+  optimizer_type: torch.optim.Adam
+  params:
+    betas: [ 0.5, 0.999 ]
+    lr: 1e-4
+
+scheduler:
+  scheduler_type: torch.optim.lr_scheduler.OneCycleLR
+  batch_wise_step: True
+  params:
+#    gamma: 0.95
+    max_lr: 5e-4
+    anneal_strategy: 'linear'
+    pct_start: 0.166667
+    div_factor: 10
+
+
+dataset:
+  # train_share: 0.95
+  split_seed: 3
+  train:
+    _target_: data.r3dDataset
+    root_dir: /home/artermiloff/PycharmProjects/PyTorch-DeepFloorplan/dataset/FPR_121_v2/train
+    remap_boundary: {5: 0} # {2: 1, 3: 1}
+    remap_room: { 2: 2, 3: 1, 4: 1, 5: 1, 6: 3}
+    num_boundary: ${general.boundary_channels}
+    num_room: ${general.room_channels}
+    transform:
+      _target_: albumentations.Compose
+      transforms:
+        - _target_: albumentations.Resize
+          height: 512
+          width: 512
+          interpolation: 0 # cv2.INTER_NEAREST
+        - _target_: albumentations.RandomRotate90
+          p: 0.5
+        - _target_: albumentations.VerticalFlip
+          p: 0.5
+        - _target_: albumentations.HorizontalFlip
+          p: 0.5
+        - _target_: albumentations.Rotate
+          p: 0.5
+          limit: 45
+          interpolation: 0 # cv2.INTER_NEAREST
+          border_mode: 0 # cv2.BORDER_CONSTANT
+          value: [ 255, 255, 255 ]
+          mask_value: 0
+  val:
+    _target_: data.r3dDataset
+    root_dir: /home/artermiloff/PycharmProjects/PyTorch-DeepFloorplan/dataset/FPR_121_v2/val
+    remap_boundary: {5: 0} # {2: 1, 3: 1}
+    remap_room: { 2: 2, 3: 1, 4: 1, 5: 1, 6: 3}
+    num_boundary: ${general.boundary_channels}
+    num_room: ${general.room_channels}
+    transform:
+      _target_: albumentations.Compose
+      transforms:
+        - _target_: albumentations.Resize
+          height: 512
+          width: 512
+          interpolation: 0 # cv2.INTER_NEAREST
+
+logging:
+  save_every_n_epochs: 5
+  log_train_every_n_epochs: 25
+  log_val_every_n_epochs: 1
+#predict:
+#  src_dir: /home/artermiloff/PycharmProjects/PyTorch-DeepFloorplan/dataset/FPR/val
+#  dst_dir: pred_results/${general.name}
+#  weights_path:
