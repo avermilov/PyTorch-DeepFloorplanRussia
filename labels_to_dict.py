@@ -1,68 +1,126 @@
+# res = {
+#   "OpeningToHall": [
+#     1,
+#     1,
+#     1
+#   ],
+#   "OpeningToRoom": [
+#     2,
+#     2,
+#     2
+#   ],
+#   "Closet": [
+#     3,
+#     3,
+#     3
+#   ],
+#   "Bathroom": [
+#     4,
+#     4,
+#     4
+#   ],
+#   "Hall": [
+#     5,
+#     5,
+#     5
+#   ],
+#   "Balcony": [
+#     6,
+#     6,
+#     6
+#   ],
+#   "Window": [
+#     7,
+#     7,
+#     7
+#   ],
+#   "Background": [
+#     8,
+#     8,
+#     8
+#   ],
+#   "Room": [
+#     9,
+#     9,
+#     9
+#   ],
+#   "Wall": [
+#     10,
+#     10,
+#     10
+#   ],
+#   "Opening": [
+#     11,
+#     11,
+#     11
+#   ],
+#   "Door": [
+#     12,
+#     12,
+#     12
+#   ],
+#   "Utilities": [
+#     13,
+#     13,
+#     13
+#   ]
+# }
+
 res = {
-  "OpeningToHall": [
+  "Closet": [
     1,
     1,
     1
   ],
-  "OpeningToRoom": [
+  "Bathroom": [
     2,
     2,
     2
   ],
-  "Closet": [
+  "Hall": [
     3,
     3,
     3
   ],
-  "Bathroom": [
+  "Balcony": [
     4,
     4,
     4
   ],
-  "Hall": [
+  "Window": [
     5,
     5,
     5
   ],
-  "Balcony": [
+  "Background": [
     6,
     6,
     6
   ],
-  "Window": [
+  "Room": [
     7,
     7,
     7
   ],
-  "Background": [
+  "Wall": [
     8,
     8,
     8
   ],
-  "Room": [
+  "Opening": [
     9,
     9,
     9
   ],
-  "Wall": [
+  "Door": [
     10,
     10,
     10
   ],
-  "Opening": [
+  "Utilities": [
     11,
     11,
     11
-  ],
-  "Door": [
-    12,
-    12,
-    12
-  ],
-  "Utilities": [
-    13,
-    13,
-    13
   ]
 }
 

@@ -4,13 +4,13 @@ hydra:
 
 
 general:
-  name: FPR_121_v2_room_bathroom_smaller_cycle_rotate90_ADD_DOOR_UTILITY
+  name: FPR_180_v1_all_rooms_smaller_cycle_rotate90_ADD_DOOR_UTILITY
   device: cuda
-  seed: 8
+  seed: 9
   epochs: 60
   num_workers: 6
   boundary_channels: 5
-  room_channels: 4
+  room_channels: 7
   shuffle_type: standard # standard random none
   train_batch_size: 1
   val_batch_size: 1
@@ -34,7 +34,7 @@ scheduler:
   scheduler_type: torch.optim.lr_scheduler.OneCycleLR
   batch_wise_step: True
   params:
-#    gamma: 0.95
+    #    gamma: 0.95
     max_lr: 5e-4
     anneal_strategy: 'linear'
     pct_start: 0.166667
@@ -42,13 +42,18 @@ scheduler:
 
 
 dataset:
+  remap_boundary: { "utility": 0, "openingtohall": 4, "openingtoroom": 4 }
+  remap_room: { "closet": 5, "bathroom": 2, "hall": 1, "balcony": 4, "room": 6,
+                "utility": 3, "openingtohall": 0, "openingtoroom": 0 }
   # train_share: 0.95
   split_seed: 3
   train:
     _target_: data.r3dDataset
-    root_dir: /home/artermiloff/PycharmProjects/PyTorch-DeepFloorplan/dataset/FPR_121_v2/train
-    remap_boundary: {5: 0} # {2: 1, 3: 1}
-    remap_room: { 2: 2, 3: 1, 4: 1, 5: 1, 6: 3}
+    root_dir: /home/artermiloff/PycharmProjects/PyTorch-DeepFloorplan/dataset/FPR_180_v1/train
+    #    remap_boundary: {5: 0} # {2: 1, 3: 1}
+    #    remap_room: { 2: 2, 3: 1, 4: 1, 5: 1, 6: 3}
+    remap_boundary: ${dataset.remap_boundary}
+    remap_room: ${dataset.remap_room}
     num_boundary: ${general.boundary_channels}
     num_room: ${general.room_channels}
     transform:
@@ -73,9 +78,11 @@ dataset:
           mask_value: 0
   val:
     _target_: data.r3dDataset
-    root_dir: /home/artermiloff/PycharmProjects/PyTorch-DeepFloorplan/dataset/FPR_121_v2/val
-    remap_boundary: {5: 0} # {2: 1, 3: 1}
-    remap_room: { 2: 2, 3: 1, 4: 1, 5: 1, 6: 3}
+    root_dir: /home/artermiloff/PycharmProjects/PyTorch-DeepFloorplan/dataset/FPR_180_v1/val
+    #    remap_boundary: {5: 0} # {2: 1, 3: 1}
+    #    remap_room: { 2: 2, 3: 1, 4: 1, 5: 1, 6: 3}
+    remap_boundary: ${dataset.remap_boundary}
+    remap_room: ${dataset.remap_room}
     num_boundary: ${general.boundary_channels}
     num_room: ${general.room_channels}
     transform:

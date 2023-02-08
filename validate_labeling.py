@@ -9,10 +9,6 @@ import numpy as np
 from PIL import Image
 from joblib import Parallel, delayed
 
-image = [[1, 1, 3, 1],
-         [1, 2, 3, 1],
-         [1, 2, 3, 1],
-         [1, 1, 3, 1], ]
 
 # mask_to_type = {
 #     0: "default_wall",
@@ -28,78 +24,135 @@ image = [[1, 1, 3, 1],
 #     10: "door",
 #     11: "utility",
 # }
-mask_to_type = {'openingtohall': 1, 'openingtoroom': 2, 'closet': 3,
+
+
+# supervisely_rooms_to_mask = {
+#     # (192, 192, 224): 1,  # "closet"
+#     # (255, 60, 128): 5,  # "door/window"
+#     # (0, 0, 0): 6,  # "background"
+#     # (255, 255, 255): 0,  # "default_wall"
+#     # (224, 255, 192): 7,  # "room"
+#     # (255, 224, 128): 7,  # "room"
+#     # (224, 224, 128): 8,  # "other"
+#     # (224, 224, 224): 3,  # "hall"
+#
+#     (192, 255, 255): 2,  # "bathroom"
+#     (224, 255, 192): 7,  # "room"
+#     (255, 160, 96): 3,  # "hall"
+#     (255, 224, 224): 4,  # "balcony"
+#     (218, 222, 239): 1,  # closet
+#     (0, 0, 0): 6,  # background
+# }
+#
+# mask_to_supervisely_rooms = {k: v for k, v in supervisely_rooms_to_mask.items()}
+#
+# r3d_to_mask = {
+#     (192, 192, 224): 1,  # "closet"
+#     (255, 160, 96): 3,  # "hall"
+#     (224, 255, 192): 7,  # "room"
+#     (192, 255, 255): 2,  # "bathroom"
+#     (255, 60, 128): 5,  # "door/window"
+#     (255, 224, 224): 4,  # "balcony"
+#     (0, 0, 0): 6,  # "background"
+#     (255, 255, 255): 0,  # "default_wall"
+#     (224, 255, 192): 7,  # "room"
+#     (255, 224, 128): 7,  # "room"
+#     (224, 224, 128): 8,  # "other"
+#     (224, 224, 224): 3,  # "hall"
+#     (142, 201, 148): 9,
+#
+#     # errors in masks
+#     (1, 1, 1): 6,
+#     (2, 2, 2): 6,
+#     (3, 3, 3): 6,
+#     (102, 102, 102): 6,
+#     (119, 119, 119): 6,
+#     (118, 118, 118): 6,
+#     (153, 153, 153): 0,
+#     (214, 214, 214): 0,
+#     (218, 222, 239): 1
+# }
+#
+# mask_to_r3d = {
+#     1: (192, 192, 224),  # "closet"
+#     3: (255, 160, 96),  # "hall"
+#     7: (224, 255, 192),  # "room"
+#     2: (192, 255, 255),  # "bathroom"
+#     5: (255, 60, 128),  # "door/window"
+#     4: (255, 224, 224),  # "balcony"
+#     6: (0, 0, 0),  # "background"
+#     0: (255, 255, 255),  # "default_wall"
+#     7: (224, 255, 192),  # "room"
+#     7: (255, 224, 128),  # "room"
+#     8: (224, 224, 128),  # "other"
+#     3: (224, 224, 224),  # "hall"
+#
+#     1: (218, 222, 239),  # closet
+#     9: (142, 201, 148),  # "opening"
+# }
+
+
+# boundary_type_to_mask = {
+#     "background": 0,
+#     "wall": 1,
+#     "window": 2,
+#     "opening": 3,
+#     "door": 4,
+#     "utility": 5
+# }
+# room_type_to_mask = {
+#     "background": 0,
+#     "closet": 1,
+#     "bathroom": 2,
+#     "hall": 3,
+#     "balcony": 4,
+#     "room": 5,
+#     "utility": 6,
+# }
+# type_to_mask = \
+#     {'closet': 1, 'bathroom': 2, 'hall': 3, 'balcony': 4, 'window': 5, 'background': 6, 'room': 7, 'wall': 8,
+#      'opening': 9, 'door': 10, 'utility': 11}
+
+
+
+
+
+
+
+def ttm(k):
+    return type_to_mask[k]
+
+
+def mtt(k):
+    return mask_to_type[k]
+
+
+boundary_type_to_mask = {
+    "background": 0,
+    "wall": 1,
+    "window": 2,
+    "door": 3,
+    "utility": 4,
+    "openingtohall": 5,
+    "openingtoroom": 6,
+}
+room_type_to_mask = {
+    "background": 0,
+    "closet": 1,
+    "bathroom": 2,
+    "hall": 3,
+    "balcony": 4,
+    "room": 5,
+    "utility": 6,
+    "openingtohall": 7,
+    "openingtoroom": 8,
+}
+type_to_mask = {"defaultwall": 0, 'openingtohall': 1, 'openingtoroom': 2,
+                'closet': 3,
                 'bathroom': 4, 'hall': 5, 'balcony': 6,
                 'window': 7, 'background': 8, 'room': 9,
-                'wall': 10, 'opening': 11, 'door': 12, 'utilities': 13}
-
-type_to_mask = {v: k for k, v in mask_to_type.items()}
-
-
-supervisely_rooms_to_mask = {
-    # (192, 192, 224): 1,  # "closet"
-    # (255, 60, 128): 5,  # "door/window"
-    # (0, 0, 0): 6,  # "background"
-    # (255, 255, 255): 0,  # "default_wall"
-    # (224, 255, 192): 7,  # "room"
-    # (255, 224, 128): 7,  # "room"
-    # (224, 224, 128): 8,  # "other"
-    # (224, 224, 224): 3,  # "hall"
-
-    (192, 255, 255): 2,  # "bathroom"
-    (224, 255, 192): 7,  # "room"
-    (255, 160, 96): 3,  # "hall"
-    (255, 224, 224): 4,  # "balcony"
-    (218, 222, 239): 1,  # closet
-    (0, 0, 0): 6,  # background
-}
-
-mask_to_supervisely_rooms = {k: v for k, v in supervisely_rooms_to_mask.items()}
-
-r3d_to_mask = {
-    (192, 192, 224): 1,  # "closet"
-    (255, 160, 96): 3,  # "hall"
-    (224, 255, 192): 7,  # "room"
-    (192, 255, 255): 2,  # "bathroom"
-    (255, 60, 128): 5,  # "door/window"
-    (255, 224, 224): 4,  # "balcony"
-    (0, 0, 0): 6,  # "background"
-    (255, 255, 255): 0,  # "default_wall"
-    (224, 255, 192): 7,  # "room"
-    (255, 224, 128): 7,  # "room"
-    (224, 224, 128): 8,  # "other"
-    (224, 224, 224): 3,  # "hall"
-    (142, 201, 148): 9,
-
-    # errors in masks
-    (1, 1, 1): 6,
-    (2, 2, 2): 6,
-    (3, 3, 3): 6,
-    (102, 102, 102): 6,
-    (119, 119, 119): 6,
-    (118, 118, 118): 6,
-    (153, 153, 153): 0,
-    (214, 214, 214): 0,
-    (218, 222, 239): 1
-}
-
-mask_to_r3d = {
-    1: (192, 192, 224),  # "closet"
-    3: (255, 160, 96),  # "hall"
-    7: (224, 255, 192),  # "room"
-    2: (192, 255, 255),  # "bathroom"
-    5: (255, 60, 128),  # "door/window"
-    4: (255, 224, 224),  # "balcony"
-    6: (0, 0, 0),  # "background"
-    0: (255, 255, 255),  # "default_wall"
-    7: (224, 255, 192),  # "room"
-    7: (255, 224, 128),  # "room"
-    8: (224, 224, 128),  # "other"
-    3: (224, 224, 224),  # "hall"
-
-    1: (218, 222, 239),  # closet
-    9: (142, 201, 148),  # "opening"
-}
+                'wall': 10, 'opening': 11, 'door': 12, 'utility': 13}
+mask_to_type = {v: k for k, v in type_to_mask.items()}
 
 
 def validate_segmentation(path: str, min_comp_size: int = 50, r3d=False) -> (dict, str):

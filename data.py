@@ -13,6 +13,8 @@ import random
 from skimage.transform import rotate
 from torch.utils.data import Dataset, DataLoader
 
+from validate_labeling import boundary_type_to_mask, room_type_to_mask
+
 
 class FillShape(nn.Module):
     def __init__(self, random=False):
@@ -63,8 +65,8 @@ class r3dDataset(Dataset):
         self.image_paths = glob.glob(os.path.join(root_dir, "*.jpg"))
         self.num_boundary = num_boundary
         self.num_room = num_room
-        self.remap_boundary = remap_boundary
-        self.remap_room = remap_room
+        self.remap_boundary = {boundary_type_to_mask[old]: new for old, new in remap_boundary.items()}
+        self.remap_room = {room_type_to_mask[old]: new for old, new in remap_room.items()}
 
         # self.size = size
         self.transform = transform

@@ -10,7 +10,7 @@ import tqdm
 from omegaconf import DictConfig
 from torch.utils.data import DataLoader, SubsetRandomSampler
 from torch.utils.tensorboard import SummaryWriter
-from predict import post_process
+from predict import post_process, room2rgb, boundary2rgb
 import matplotlib.pyplot as plt
 
 
@@ -90,25 +90,26 @@ def compare(images, rooms, boundaries, r, cw):
     r = BCHW2colormap(r).astype(np.uint8)
     cw = BCHW2colormap(cw).astype(np.uint8)
     room_post = post_process(r, cw).astype(np.uint8)
+
     f = plt.figure()
     plt.subplot(2, 3, 1)
     plt.title("image")
     plt.imshow(image)
     plt.subplot(2, 3, 2)
     plt.title("room gt")
-    plt.imshow(room)
+    plt.imshow(room2rgb(room))
     plt.subplot(2, 3, 3)
     plt.title("bd gt")
-    plt.imshow(boundary)
+    plt.imshow(boundary2rgb(boundary))
     plt.subplot(2, 3, 4)
     plt.title("r pred post")
-    plt.imshow(room_post)
+    plt.imshow(room2rgb(room_post))
     plt.subplot(2, 3, 5)
     plt.title("r pred")
-    plt.imshow(r)
+    plt.imshow(room2rgb(r))
     plt.subplot(2, 3, 6)
     plt.title("bd pred post")
-    plt.imshow(cw)
+    plt.imshow(boundary2rgb(cw))
     return f
 
 
