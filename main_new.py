@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader, SubsetRandomSampler
 from torch.utils.tensorboard import SummaryWriter
 from predict import post_process, room2rgb, boundary2rgb
 import matplotlib.pyplot as plt
+from torchmetrics.classification import MulticlassAccuracy
 
 
 def seed_everything(seed: int):
@@ -108,7 +109,7 @@ def compare(images, rooms, boundaries, r, cw):
     plt.title("r pred")
     plt.imshow(room2rgb(r))
     plt.subplot(2, 3, 6)
-    plt.title("bd pred post")
+    plt.title("bd pred")
     plt.imshow(boundary2rgb(cw))
     return f
 
@@ -146,25 +147,27 @@ def main(cfg: DictConfig) -> None:
         val_count = len(dataset) - train_count
         train_ds, val_ds = torch.utils.data.random_split(dataset, [train_count, val_count],
                                                          torch.Generator().manual_seed(cfg.dataset.split_seed))
-
+        val_ds_list = [val_ds]
     else:
-        print("Loading val dataset...")
+        print("Loading val dataset(s)...")
         train_ds = dataset
-        val_ds = hydra.utils.instantiate(cfg.dataset.val)
+        val_ds_list = hydra.utils.instantiate(cfg.dataset.val)
+        # val_ds = hydra.utils.instantiate(cfg.dataset.val)
 
     sampler = SubsetRandomSampler(indices=list(range(0, len(train_ds)))) if shuffle_type == "random" else None
     train_loader = DataLoader(train_ds, num_workers=cfg.general.num_workers,
                               batch_size=cfg.general.train_batch_size,
                               shuffle=do_shuffle, sampler=sampler)
 
-    val_loader = DataLoader(val_ds, shuffle=False, num_workers=cfg.general.num_workers,
-                            batch_size=cfg.general.val_batch_size)
+    val_loader_list = [DataLoader(val_ds, shuffle=False, num_workers=cfg.general.num_workers,
+                                  batch_size=1) for val_ds in val_ds_list]
 
     train_ds_size = len(train_loader.dataset)
-    val_ds_size = len(val_loader.dataset)
+    total_val_ds_size = sum([len(val_ds) for val_ds in val_ds_list])
+    # val_ds_size = len(val_loader.dataset)
 
     scheduler = None
-    scheduler_batch_wise_step = cfg.scheduler.batch_wise_step
+    scheduler_batch_wise_step = getattr(cfg.scheduler, "batch_wise_step", False)
     if cfg.scheduler is not None:
         SchedulerClass = hydra.utils.get_class(cfg.scheduler.scheduler_type)
         if scheduler_batch_wise_step:
@@ -173,12 +176,28 @@ def main(cfg: DictConfig) -> None:
         else:
             scheduler = SchedulerClass(optimizer, **cfg.scheduler.params)
 
+    # additional loss coefficients
+    room_w = cfg.loss.room_w
+    boundary_w = cfg.loss.boundary_w
+
+    # metric initializations
+    PixelAccRoom = MulticlassAccuracy(num_classes=cfg.general.room_channels, average="micro").to(cfg.general.device)
+    PixelAccCW = MulticlassAccuracy(num_classes=cfg.general.boundary_channels, average="micro").to(cfg.general.device)
+    ClassAccRoom = MulticlassAccuracy(num_classes=cfg.general.room_channels, average="macro").to(cfg.general.device)
+    ClassAccCW = MulticlassAccuracy(num_classes=cfg.general.boundary_channels, average="macro").to(cfg.general.device)
+
     for epoch in range(cfg.general.epochs):
+        # TRAINING LOOP
         running_train_loss = .0
         running_train_room_loss = .0
         running_train_boundary_loss = .0
+        running_train_pixel_acc_room = .0
+        running_train_pixel_acc_cw = .0
+        running_train_class_acc_room = .0
+        running_train_class_acc_cw = .0
 
-        for idx, (im, cw, r,) in tqdm.tqdm(enumerate(train_loader)):
+        for idx, (im, cw, r,) in tqdm.tqdm(enumerate(train_loader),
+                                           total=len(train_loader), desc=f"Training #{epoch:03}"):
             im, cw, r = im.to(DEVICE), cw.to(DEVICE), r.to(DEVICE)
             # zero gradients
             optimizer.zero_grad()
@@ -186,8 +205,8 @@ def main(cfg: DictConfig) -> None:
             # forward
             logits_r, logits_cw = model(im)
             # loss
-            loss1 = balanced_entropy(logits_r, r)
-            loss2 = balanced_entropy(logits_cw, cw)
+            loss1 = balanced_entropy(logits_r, r) * room_w
+            loss2 = balanced_entropy(logits_cw, cw) * boundary_w
             w1, w2 = cross_two_tasks_weight(r, cw)
             loss = w1 * loss1 + w2 * loss2
             # backward
@@ -199,65 +218,144 @@ def main(cfg: DictConfig) -> None:
             running_train_room_loss += loss1.item()
             running_train_boundary_loss += loss2.item()
 
+            pixel_acc_room = PixelAccRoom(logits_r, r.argmax(dim=1))
+            pixel_acc_cw = PixelAccCW(logits_cw, cw.argmax(dim=1))
+            class_acc_room = ClassAccRoom(logits_r, r.argmax(dim=1))
+            class_acc_cw = ClassAccCW(logits_cw, cw.argmax(dim=1))
+
+            running_train_pixel_acc_room += pixel_acc_room.item()
+            running_train_pixel_acc_cw += pixel_acc_cw.item()
+            running_train_class_acc_room += class_acc_room.item()
+            running_train_class_acc_cw += class_acc_cw.item()
+
             writer.add_scalar("lr", get_lr(optimizer), global_step=epoch * len(train_loader) + idx)
 
             if scheduler is not None and scheduler_batch_wise_step:
                 scheduler.step()
 
-            for name, value in {"batch_loss": loss.item(),
-                                "batch_room_loss": loss1.item(),
-                                "batch_boundary_loss": loss2.item()}.items():
-                writer.add_scalar("train/" + name, value, global_step=epoch * len(train_loader) + idx)
+            # for name, value in {"batch_loss": loss.item(),
+            #                     "batch_room_loss": loss1.item(),
+            #                     "batch_boundary_loss": loss2.item()}.items():
+            #     writer.add_scalar("train/" + name, value, global_step=epoch * len(train_loader) + idx)
             if idx % cfg.logging.log_train_every_n_epochs == 0:
-                f1 = compare(im, r, cw, logits_r, logits_cw)
-                writer.add_figure(f'train/image_{idx:03}', f1, epoch)
+                train_example = compare(im, r, cw, logits_r, logits_cw)
+                writer.add_figure(f'train/image_{idx:03}', train_example, epoch)
+        for name, value in {"epoch_loss": running_train_loss,
+                            "epoch_room_loss": running_train_room_loss,
+                            "epoch_boundary_loss": running_train_boundary_loss,
+                            "epoch_pixel_acc_room": running_train_pixel_acc_room,
+                            "epoch_pixel_acc_boundary": running_train_pixel_acc_cw,
+                            "epoch_class_acc_room": running_train_class_acc_room,
+                            "epoch_class_acc_boundary": running_train_class_acc_cw,
+                            }.items():
+            writer.add_scalar("train/" + name, value / train_ds_size, global_step=epoch)
 
         if scheduler is not None and not scheduler_batch_wise_step:
             print("STEP")
             scheduler.step()
 
-        for name, value in {"epoch_loss": running_train_loss / train_ds_size,
-                            "epoch_room_loss": running_train_room_loss / train_ds_size,
-                            "epoch_boundary_loss": running_train_boundary_loss / train_ds_size}.items():
-            writer.add_scalar("train/" + name, value, global_step=epoch)
+        # TOTAL VALIDATION LOOP
+        total_running_val_loss = .0
+        total_running_val_room_loss = .0
+        total_running_val_boundary_loss = .0
 
-        running_val_loss = .0
-        running_val_room_loss = .0
-        running_val_boundary_loss = .0
-        for idx, (im, cw, r) in tqdm.tqdm(enumerate(val_loader)):
-            im, cw, r = im.to(DEVICE), cw.to(DEVICE), r.to(DEVICE)
-            with torch.inference_mode():
-                model.eval()
-                optimizer.zero_grad()
-                # forward
-                logits_r, logits_cw = model(im)
-                # loss
-                loss1 = balanced_entropy(logits_r, r)
-                loss2 = balanced_entropy(logits_cw, cw)
-                w1, w2 = cross_two_tasks_weight(r, cw)
-                loss = w1 * loss1 + w2 * loss2
-            # statistics
-            running_val_loss += loss.item()
-            running_val_room_loss += loss1.item()
-            running_val_boundary_loss += loss2.item()
+        total_running_pixel_acc_room = .0
+        total_running_pixel_acc_cw = .0
+        total_running_class_acc_room = .0
+        total_running_class_acc_cw = .0
+        with torch.inference_mode():
+            model.eval()
+            # SINGLE VALIDATION LOOP
+            for val_loader in val_loader_list:
+                val_ds_size = len(val_loader.dataset)
+                running_val_loss = .0
+                running_val_room_loss = .0
+                running_val_boundary_loss = .0
+                running_pixel_acc_room = .0
+                running_pixel_acc_cw = .0
+                running_class_acc_room = .0
+                running_class_acc_cw = .0
+                ds_name = val_loader.dataset.name
+                for idx, (im, cw, r) in tqdm.tqdm(enumerate(val_loader),
+                                                  total=val_ds_size, desc=f"Val {ds_name}"):
+                    im, cw, r = im.to(DEVICE), cw.to(DEVICE), r.to(DEVICE)
 
-            for name, value in {"batch_loss": loss.item(),
-                                "batch_room_loss": loss1.item(),
-                                "batch_boundary_loss": loss2.item()}.items():
-                writer.add_scalar("val/" + name, value, global_step=epoch * len(train_loader) + idx)
-            # if idx % 10 == 0:
-            if idx % cfg.logging.log_val_every_n_epochs == 0:
-                f2 = compare(im, r, cw, logits_r, logits_cw)
-                writer.add_figure(f'val/image_{idx:03}', f2, epoch)
+                    optimizer.zero_grad()
+                    # forward
+                    logits_r, logits_cw = model(im)
+                    # loss
+                    loss1 = balanced_entropy(logits_r, r) * room_w
+                    loss2 = balanced_entropy(logits_cw, cw) * boundary_w
+                    w1, w2 = cross_two_tasks_weight(r, cw)
+                    loss = w1 * loss1 + w2 * loss2
+                    # ds running statistics
+                    running_val_loss += loss.item()
+                    running_val_room_loss += loss1.item()
+                    running_val_boundary_loss += loss2.item()
+                    # total running statistics
+                    total_running_val_loss += loss.item()
+                    total_running_val_room_loss += loss1.item()
+                    total_running_val_boundary_loss += loss2.item()
+                    # metrics
+                    # predboundary = BCHW2colormap(logits_cw)
+                    # predroom = BCHW2colormap(logits_r)
 
-        for name, value in {"epoch_loss": running_val_loss / val_ds_size,
-                            "epoch_room_loss": running_val_room_loss / val_ds_size,
-                            "epoch_boundary_loss": running_val_boundary_loss / val_ds_size}.items():
-            writer.add_scalar("val/" + name, value, global_step=epoch)
-        val_loss = running_val_loss / val_ds_size
+                    # print(torch.tensor(predroom).unsqueeze(0).type(torch.int32).shape, r.argmax(dim=1).shape)
+                    pixel_acc_room = PixelAccRoom(logits_r, r.argmax(dim=1))
+                    pixel_acc_cw = PixelAccCW(logits_cw, cw.argmax(dim=1))
+                    class_acc_room = ClassAccRoom(logits_r, r.argmax(dim=1))
+                    class_acc_cw = ClassAccCW(logits_cw, cw.argmax(dim=1))
+
+                    running_pixel_acc_room += pixel_acc_room.item()
+                    running_pixel_acc_cw += pixel_acc_cw.item()
+                    running_class_acc_room += class_acc_room.item()
+                    running_class_acc_cw += class_acc_cw.item()
+
+                    total_running_pixel_acc_room += pixel_acc_room.item()
+                    total_running_pixel_acc_cw += pixel_acc_cw.item()
+                    total_running_class_acc_room += class_acc_room.item()
+                    total_running_class_acc_cw += class_acc_cw.item()
+
+                    # log batch
+                    # for name, value in {
+                    #     "batch_loss": loss.item(),
+                    #     "batch_room_loss": loss1.item(),
+                    #     "batch_boundary_loss": loss2.item(),
+                    #     "batch_pixel_acc_room": pixel_acc_room.item(),
+                    #     "batch_pixel_acc_boundary": pixel_acc_cw.item(),
+                    #     "batch_class_pixel_acc_room": class_acc_room.item(),
+                    #     "batch_class_pixel_acc_boundary": class_acc_cw.item()
+                    # }.items():
+                    #     writer.add_scalar(f"val_{ds_name}/{name}", value,
+                    #                       global_step=epoch * len(train_loader) + idx)
+
+                    # log image
+                    if idx % cfg.logging.log_val_every_n_epochs == 0:
+                        val_example = compare(im, r, cw, logits_r, logits_cw)
+                        writer.add_figure(f'val_{ds_name}/image_{idx:03}', val_example, epoch)
+                # log ds
+                for name, value in {"epoch_loss": running_val_loss,
+                                    "epoch_room_loss": running_val_room_loss,
+                                    "epoch_boundary_loss": running_val_boundary_loss,
+                                    "epoch_pixel_acc_room": running_pixel_acc_room,
+                                    "epoch_pixel_acc_boundary": running_pixel_acc_cw,
+                                    "epoch_class_acc_room": running_class_acc_room,
+                                    "epoch_class_acc_boundary": running_class_acc_cw,
+                                    }.items():
+                    writer.add_scalar(f"val_{ds_name}/{name}", value / val_ds_size, global_step=epoch)
+        # log total
+        for name, value in {"epoch_loss": total_running_val_loss,
+                            "epoch_room_loss": total_running_val_room_loss,
+                            "epoch_boundary_loss": total_running_val_boundary_loss,
+                            "epoch_pixel_acc_room": total_running_pixel_acc_room,
+                            "epoch_pixel_acc_boundary": total_running_pixel_acc_cw,
+                            "epoch_class_acc_room": total_running_class_acc_room,
+                            "epoch_class_acc_boundary": total_running_class_acc_cw
+                            }.items():
+            writer.add_scalar(f"val/{name}", value / total_val_ds_size, global_step=epoch)
+        val_loss = total_running_val_loss / total_val_ds_size
         if (epoch + 1) % cfg.logging.save_every_n_epochs == 0:
-            torch.save(model.state_dict(),
-                       ckpt_dir + f"/model_epoch{epoch:03}_loss{val_loss:.0f}.pt")
+            torch.save(model.state_dict(), ckpt_dir + f"/model_epoch{epoch:03}_loss{val_loss:.0f}.pt")
         gc.collect()
 
 

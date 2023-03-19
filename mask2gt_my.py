@@ -120,9 +120,11 @@ def convert(mask_path, target_dir):
 
 if __name__ == "__main__":
     mask_paths = sorted(
-        glob.glob("/home/artermiloff/Downloads/226922_FloorPlansRussia(new shapes)/FloorPlansToLabel*/masks_machine/*"))
+        glob.glob("/home/artermiloff/Downloads/233704_FloorPlansRussia(new shapes)/FloorPlansToLabel*/masks_machine/*"))
     print(len(mask_paths))
 
-    target_dir = "dataset/FPR_180_v1/"
+    target_dir = "dataset/FPR_433_v1/"
+    if not os.path.exists(target_dir):
+        os.makedirs(target_dir, exist_ok=True)
     _ = Parallel(n_jobs=20)(delayed(convert)(path, target_dir) for path in mask_paths)
     # _ = [convert(mask_path, target_dir) for mask_path in mask_paths]

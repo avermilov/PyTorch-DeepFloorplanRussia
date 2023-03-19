@@ -229,7 +229,7 @@ import matplotlib.pyplot as plt
 
 if __name__ == "__main__":
     paths = glob.glob(
-        "/home/artermiloff/Downloads/226922_FloorPlansRussia(new shapes)/FloorPlansToLabel*/masks_machine/*")
+        "/home/artermiloff/Downloads/233704_FloorPlansRussia(new shapes)/FloorPlansToLabel*/masks_machine/*")
     print(len(paths))
     results = Parallel(n_jobs=20)(delayed(validate_segmentation)(path, min_comp_size=25) for path in paths)
     # results = [validate_segmentation(path, min_comp_size=50) for path in paths]

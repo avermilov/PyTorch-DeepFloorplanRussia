@@ -1,5 +1,6 @@
 import gc
 import sys
+import time
 
 import torchvision.transforms
 
@@ -19,7 +20,6 @@ import torch.optim
 import tqdm
 from omegaconf import DictConfig
 
-
 def BCHW2colormap(tensor, earlyexit=False):
     if tensor.size(0) != 1:
         tensor = tensor[0].unsqueeze(0)
@@ -36,7 +36,7 @@ def initialize(args):
     # data
     trans = transforms.Compose([transforms.ToTensor()])
     orig = cv2.imread(args.image_path)
-    orig = cv2.resize(orig, (512, 512))
+    orig = cv2.resize(orig, (1024, 1024))
     image = trans(orig.astype(np.float32) / 255.)
     image = image.unsqueeze(0).to(device)
     # model
@@ -147,7 +147,16 @@ def boundary2rgb(ind_im):
     return rgb_im.astype(int)
 
 
+# def combine_preds(predboundary, predroom, boundary_channels: int, room_channels: int):
+#     print(predboundary.max(), predboundary.min())
+#     print(predroom.max(), predroom.min())
+
+
+
+
 def main(args):
+    if not os.path.isdir(args.dst_dir):
+        os.makedirs(args.dst_dir)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = DFPmodel(room_channels=args.room_channels,
                      boundary_channels=args.boundary_channels)
@@ -171,21 +180,21 @@ def main(args):
 
             # run
             logits_r, logits_cw = model(image)
-            predroom = BCHW2colormap(logits_r)
             predboundary = BCHW2colormap(logits_cw)
+            predroom = BCHW2colormap(logits_r)
+            predroom_post = post_process(predroom, predboundary)
 
-            # rgb_room_raw = ind2rgb(predroom, color_map=floorplan_fuse_map)
-            # rgb_room = ind2rgb(post_process(predroom, predboundary), color_map=floorplan_fuse_map)
-
+            # combined = combine_preds(predboundary, predroom, args.boundary_channels, args.room_channels)
             rgb_room_raw = room2rgb(predroom)
-            rgb_room = room2rgb(post_process(predroom, predboundary))
+            rgb_room_post = room2rgb(predroom_post)
             rgb_boundary = boundary2rgb(predboundary)
+
 
             # plot
             # if False:
             # plt.figure(figsize=(8, 6), dpi=80)
             plt.subplot(1, 4, 1)
-            plt.title("input")
+            plt.title("input: pad")
             plt.imshow(orig[:, :, ::-1])
             plt.axis('off')
             plt.subplot(1, 4, 2)
@@ -194,7 +203,7 @@ def main(args):
             plt.axis('off')
             plt.subplot(1, 4, 3)
             plt.title("room post")
-            plt.imshow(rgb_room)
+            plt.imshow(rgb_room_post)
             plt.axis('off')
             plt.subplot(1, 4, 4)
             plt.title("boundary")
@@ -202,6 +211,7 @@ def main(args):
             plt.axis('off')
             file_name = file[file.rfind("/") + 1:file.rfind(".")]
             plt.savefig(args.dst_dir + f"/{file_name}_grid.png", bbox_inches='tight', dpi=450)
+            plt.clf()
             # plt.show()
             gc.collect()
             # grid_image = image_grid([orig, rgb_room, predboundary], rows=1, cols=3)
@@ -211,14 +221,15 @@ def main(args):
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
+    # SPECIFY INPUT NAME FOR EXP !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     p.add_argument('--weights_path', type=str,
-                   default="/home/artermiloff/PycharmProjects/PyTorch-DeepFloorplan/experiment_logs/FPR_180_v1_all_rooms_smaller_cycle_rotate90_ADD_DOOR_UTILITY/train_20230205_102458/checkpoints/model_epoch059_loss595.pt")
+                   default="/home/artermiloff/PycharmProjects/PyTorch-DeepFloorplan/experiment_logs/FPR_433_v1_all_rooms_BIGGER_ROOM_LOSS_4_NOFREEZE_ROT60_EP80_PAD/train_20230317_123343/checkpoints/model_epoch079_loss1328.pt")
     p.add_argument('--room_channels', type=int, default=7)
     p.add_argument('--boundary_channels', type=int, default=5)
     p.add_argument('--src_dir', type=str,
-                   default="/home/artermiloff/PycharmProjects/PyTorch-DeepFloorplan/predict/input")
+                   default="/home/artermiloff/Datasets/FloorPlansRussiaSplit/ToLabelV3")
     p.add_argument('--dst_dir', type=str,
-                   default="/home/artermiloff/PycharmProjects/PyTorch-DeepFloorplan/predict/output/all_rooms/")
+                   default="/home/artermiloff/PycharmProjects/PyTorch-DeepFloorplan/predict/output_tolabelv3_433_pad/")
     p.add_argument('--postprocess', action='store_true', default=True)
     args = p.parse_args()
 

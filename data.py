@@ -2,6 +2,7 @@ import glob
 import os
 from typing import List
 
+import albumentations
 import torch
 
 import albumentations as A
@@ -57,7 +58,8 @@ def remap_values(arr, remap_dict):
 
 class r3dDataset(Dataset):
     def __init__(self, root_dir: str, num_boundary: int, num_room: int,
-                 remap_room, remap_boundary, transform=None):
+                 remap_room, remap_boundary, name: str, transform=None,
+                 random_fill=False):
         # self.df = pd.read_csv(csv_file)
         # self.df2 = pd.concat([pd.read_csv('r3d2.csv'), pd.read_csv("floorplanrussia.csv")]).reset_index()
 
@@ -67,10 +69,10 @@ class r3dDataset(Dataset):
         self.num_room = num_room
         self.remap_boundary = {boundary_type_to_mask[old]: new for old, new in remap_boundary.items()}
         self.remap_room = {room_type_to_mask[old]: new for old, new in remap_room.items()}
+        self.name = name
 
-        # self.size = size
         self.transform = transform
-        self.fill_shape_tsfm = FillShape(random=True)
+        self.fill_shape_tsfm = FillShape(random=random_fill)
         self.to_tensor = torchvision.transforms.ToTensor()
 
     def __getitem__(self, idx):
@@ -105,29 +107,40 @@ class r3dDataset(Dataset):
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
-    DFPdataset = r3dDataset(root_dir="dataset/FPR/",
-                            num_boundary=4, num_room=6,
-                            remap_room={2: 1, 3: 1, 4: 1, 5: 1, 7: 1},
-                            remap_boundary=None,
-                            transform=None)
-    print(len(DFPdataset))
-    for i in range(len(DFPdataset)):
-        image, boundary, room = DFPdataset[i]
-        print(i, image.shape)
+    DFPdataset = r3dDataset(
+        root_dir="/home/artermiloff/PycharmProjects/PyTorch-DeepFloorplan/dataset/FPR_433_v1/val_rare",
+        num_boundary=5, num_room=7,
+        remap_room={"closet": 5, "bathroom": 2, "hall": 1, "balcony": 4, "room": 6,
+                    "utility": 3, "openingtohall": 0, "openingtoroom": 0},
+        remap_boundary={"utility": 0, "openingtohall": 3, "openingtoroom": 3},
+        name="stuff",
+        transform=albumentations.Compose([
+            albumentations.OneOf([
+            albumentations.CropAndPad(percent=[0.01, 0.5], pad_mode=0,
+                                      pad_cval=[[255, 255, 255]], pad_cval_mask=0, sample_independently=False),
+            ], p=0.5)
+            # albumentations.Resize(512, 512, 0),
+        ]),
+        random_fill=False)
 
-    # for i in range(1):
-    #     image, boundary, room = DFPdataset[8]
-    #     print(image.shape, boundary.shape, room.shape)
-    #
-    #     plt.subplot(2, 2, 1)
-    #     plt.imshow(torchvision.transforms.ToPILImage()(image))
-    #     plt.subplot(2, 2, 2)
-    #     plt.imshow(boundary)
-    #     plt.subplot(2, 2, 3)
-    #     plt.imshow(room)
-    #     # plt.subplot(2, 2, 4)
-    #     # plt.imshow(door)
-    #     plt.show()
+    print(len(DFPdataset))
+    # for i in range(len(DFPdataset)):
+    #     image, boundary, room = DFPdataset[i]
+    #     print(i, image.shape)
+
+    for i in range(10):
+        image, boundary, room = DFPdataset[8]
+        print(image.shape, boundary.shape, room.shape)
+
+        plt.subplot(2, 2, 1)
+        plt.imshow(torchvision.transforms.ToPILImage()(image))
+        plt.subplot(2, 2, 2)
+        plt.imshow(boundary)
+        plt.subplot(2, 2, 3)
+        plt.imshow(room)
+        # plt.subplot(2, 2, 4)
+        # plt.imshow(door)
+        plt.show()
 
     # breakpoint()
 

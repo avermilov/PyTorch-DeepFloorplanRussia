@@ -1,5 +1,7 @@
 import os
 import shutil
+
+import cv2
 import numpy as np
 import glob
 import tqdm
@@ -22,18 +24,42 @@ from PIL import Image
 # 147296.jpg
 # 42626239.jpg
 #
-path = '/home/artermiloff/PycharmProjects/PyTorch-DeepFloorplan/predict/input/42548963.jpg'
-import pytesseract as pts
-pts.pytesseract.tesseract_cmd = r'/usr/bin/tesseract'
 
-res = pts.image_to_data(Image.open(path),
-    lang='rus', output_type=pts.Output.DICT)
-res_df = pd.DataFrame(res)
-res_df = res_df[["top", "left", "width", "height", "conf", "text"]]
-print(res_df.query("text != ''"))
+# path = '/home/artermiloff/PycharmProjects/PyTorch-DeepFloorplan/predict/input/42548963.jpg'
+# import pytesseract as pts
+# pts.pytesseract.tesseract_cmd = r'/usr/bin/tesseract'
+#
+# res = pts.image_to_data(Image.open(path),
+#     lang='rus', output_type=pts.Output.DICT)
+# res_df = pd.DataFrame(res)
+# res_df = res_df[["top", "left", "width", "height", "conf", "text"]]
+# print(res_df.query("text != ''"))
+#
+# import easyocr
+# reader = easyocr.Reader(["ru"])
+# result = reader.readtext(path)
+# for item in result:
+#     print(item)
 
-import easyocr
-reader = easyocr.Reader(["ru"])
-result = reader.readtext(path)
-for item in result:
-    print(item)
+# import albumentations as A
+# path = "/home/artermiloff/PycharmProjects/PyTorch-DeepFloorplan/dataset/FPR_211_v1/val_standard/10059044.jpg"
+# img = cv2.imread(path)
+# img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+# for i in range(10):
+#     # comp = A.ColorJitter(always_apply=True,
+#     #                      brightness=0.5,
+#     #                      contrast=0.5, saturation=0.5, hue=0.5)(image=img)["image"]
+#     comp = A.JpegCompression(quality_lower=1, quality_upper=10, always_apply=True)(image=img)["image"]
+#     cv2.imwrite(f"img_comp_{i:02}.jpeg", comp)
+# print(img)
+
+width = 5
+max_width = 10
+min_width = 1
+
+height = 1
+max_height = 10
+min_height = 1
+
+if not min_width <= width <= max_width or not min_height <= height <= max_height:
+    print("WRONG")

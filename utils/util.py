@@ -23,7 +23,7 @@ def flood_fill(test_array, h_max=255):
     el = ndimage.generate_binary_structure(2,1).astype(np.int)
     while not np.array_equal(output_old_array, output_array):
             output_old_array = np.copy(output_array)
-            output_array = np.maximum(input_array,ndimage.grey_erosion(output_array, size=(3,3), footprint=el))
+            output_array = np.maximum(input_array, ndimage.grey_erosion(output_array, size=(3,3), footprint=el))
     return output_array
 
 
