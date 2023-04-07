@@ -3,6 +3,7 @@ import sys
 import time
 
 import torchvision.transforms
+from scipy import ndimage
 
 sys.path.append('./utils/')
 from rgb_ind_convertor import *
@@ -19,6 +20,31 @@ import torch.nn.functional as F
 import torch.optim
 import tqdm
 from omegaconf import DictConfig
+
+
+def fill_holes(rgb_full_img):
+    rgb_full = rgb_full_img.copy()
+    binary_full = (rgb_full == 0).all(2)
+    hole_locations = ((ndimage.binary_fill_holes(~binary_full) * 1 - 1 * (~binary_full)).astype(np.uint8)).nonzero()
+    min_same_count = 2
+    prev_count = float("inf")
+    while len(hole_locations[0]) > 0:
+        for x, y in zip(hole_locations[0], hole_locations[1]):
+            neighbors = np.array([rgb_full[x + i, y + j, :] for i, j in ((1, 0), (0, 1), (0, -1), (-1, 0))])
+            neighbors = neighbors[~(neighbors == 0).all(1)]
+            values, counts = np.unique(neighbors, return_counts=True, axis=0)
+            if len(counts) == 0:
+                continue
+            arg_max = np.argmax(counts)
+            if counts[arg_max] >= min_same_count:
+                rgb_full[x, y] = values[arg_max]
+        binary_full = (rgb_full == 0).all(2)
+        hole_locations = ((ndimage.binary_fill_holes(~binary_full) * 1 - 1 * (~binary_full)).astype(np.uint8)).nonzero()
+        if len(hole_locations[0]) == prev_count:
+            min_same_count = 1
+        prev_count = len(hole_locations[0])
+    return rgb_full.copy()
+
 
 def BCHW2colormap(tensor, earlyexit=False):
     if tensor.size(0) != 1:
@@ -152,8 +178,6 @@ def boundary2rgb(ind_im):
 #     print(predroom.max(), predroom.min())
 
 
-
-
 def main(args):
     if not os.path.isdir(args.dst_dir):
         os.makedirs(args.dst_dir)
@@ -165,7 +189,7 @@ def main(args):
     model.eval()
 
     src_files = glob.glob(args.src_dir + "/*")
-    fill_shape_tsfm = FillShape(random=False)
+    fill_shape_tsfm = FillShape(random=False)  # DONT FORGET TO CHANGE THIS !!!!!!!!!!!!!!!!!!!!!!!!!!1
     to_tensor = torchvision.transforms.ToTensor()
     with torch.inference_mode():
         for file in tqdm.tqdm(src_files):
@@ -189,26 +213,32 @@ def main(args):
             rgb_room_post = room2rgb(predroom_post)
             rgb_boundary = boundary2rgb(predboundary)
 
+            rgb_full = rgb_boundary + rgb_room_post
 
             # plot
             # if False:
             # plt.figure(figsize=(8, 6), dpi=80)
-            plt.subplot(1, 4, 1)
+            plt.subplot(1, 5, 1)
             plt.title("input: pad")
             plt.imshow(orig[:, :, ::-1])
             plt.axis('off')
-            plt.subplot(1, 4, 2)
+            plt.subplot(1, 5, 2)
+            plt.title("combined")
+            plt.imshow(rgb_full)
+            plt.axis('off')
+            plt.subplot(1, 5, 3)
             plt.title("room")
             plt.imshow(rgb_room_raw)
             plt.axis('off')
-            plt.subplot(1, 4, 3)
+            plt.subplot(1, 5, 4)
             plt.title("room post")
             plt.imshow(rgb_room_post)
             plt.axis('off')
-            plt.subplot(1, 4, 4)
+            plt.subplot(1, 5, 5)
             plt.title("boundary")
             plt.imshow(rgb_boundary)
             plt.axis('off')
+
             file_name = file[file.rfind("/") + 1:file.rfind(".")]
             plt.savefig(args.dst_dir + f"/{file_name}_grid.png", bbox_inches='tight', dpi=450)
             plt.clf()
@@ -223,13 +253,13 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser()
     # SPECIFY INPUT NAME FOR EXP !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     p.add_argument('--weights_path', type=str,
-                   default="/home/artermiloff/PycharmProjects/PyTorch-DeepFloorplan/experiment_logs/FPR_433_v1_all_rooms_BIGGER_ROOM_LOSS_4_NOFREEZE_ROT60_EP80_PAD/train_20230317_123343/checkpoints/model_epoch079_loss1328.pt")
+                   default="/home/artermiloff/PycharmProjects/PyTorch-DeepFloorplan/experiment_logs/FPR_433_v1_all_rooms_BIGGER_ROOM_LOSS_4_NOFREEZE_ROT60_EP80/train_20230312_140206/checkpoints/model_epoch079_loss1230.pt")
     p.add_argument('--room_channels', type=int, default=7)
     p.add_argument('--boundary_channels', type=int, default=5)
     p.add_argument('--src_dir', type=str,
                    default="/home/artermiloff/Datasets/FloorPlansRussiaSplit/ToLabelV3")
     p.add_argument('--dst_dir', type=str,
-                   default="/home/artermiloff/PycharmProjects/PyTorch-DeepFloorplan/predict/output_tolabelv3_433_pad/")
+                   default="/home/artermiloff/PycharmProjects/PyTorch-DeepFloorplan/predict/output_tolabelv3_433_EP80_COMBINE/")
     p.add_argument('--postprocess', action='store_true', default=True)
     args = p.parse_args()
 

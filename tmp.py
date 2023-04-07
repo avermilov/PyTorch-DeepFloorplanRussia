@@ -52,14 +52,16 @@ from PIL import Image
 #     comp = A.JpegCompression(quality_lower=1, quality_upper=10, always_apply=True)(image=img)["image"]
 #     cv2.imwrite(f"img_comp_{i:02}.jpeg", comp)
 # print(img)
+import glob, tqdm
+from PIL import Image
 
-width = 5
-max_width = 10
-min_width = 1
+files = glob.glob("/home/artermiloff/Datasets/FloorPlansRussiaSplit/ToLabelV3/*")
 
-height = 1
-max_height = 10
-min_height = 1
-
-if not min_width <= width <= max_width or not min_height <= height <= max_height:
-    print("WRONG")
+sch = 0
+for file in files:
+    img = Image.open(file)
+    w, h = img.size
+    if w != h:
+        print(w, h, max(w/h, h/w))
+        sch += 1
+print(sch / len(files))
