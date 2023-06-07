@@ -189,15 +189,17 @@ def main(args):
     model.eval()
 
     src_files = glob.glob(args.src_dir + "/*")
-    fill_shape_tsfm = FillShape(random=False)  # DONT FORGET TO CHANGE THIS !!!!!!!!!!!!!!!!!!!!!!!!!!1
+    fill_shape_tsfm = FillShape(type="center")  # DONT FORGET TO CHANGE THIS !!!!!!!!!!!!!!!!!!!!!!!!!!1
     to_tensor = torchvision.transforms.ToTensor()
     with torch.inference_mode():
-        for file in tqdm.tqdm(src_files):
+        for i, file in tqdm.tqdm(enumerate(src_files)):
             image = np.asarray(Image.open(file))
             h, w, c = image.shape
+            fake_bd, fake_room = np.zeros((h, w)), np.zeros((h, w))
             orig = image.copy()
 
-            image, _, _ = fill_shape_tsfm(image, np.zeros((h, w)), np.zeros((h, w)))
+            image, _, _ = localize(image, fake_bd, fake_room)
+            image, _, _ = fill_shape_tsfm(image, fake_bd, fake_room)
             image = cv2.resize(image, (512, 512), interpolation=cv2.INTER_NEAREST)
             image = to_tensor(image.astype(np.float32) / 255.0).unsqueeze(0)
             image = image.to(device)
@@ -213,36 +215,48 @@ def main(args):
             rgb_room_post = room2rgb(predroom_post)
             rgb_boundary = boundary2rgb(predboundary)
 
-            rgb_full = rgb_boundary + rgb_room_post
+            rgb_full = rgb_boundary.copy()
+            rgb_full[rgb_boundary.sum(axis=2) == 0] = rgb_room_raw[rgb_boundary.sum(axis=2) == 0]
+
+            rgb_full_post = rgb_boundary.copy()
+            rgb_full_post[rgb_boundary.sum(axis=2) == 0] = rgb_room_post[rgb_boundary.sum(axis=2) == 0]
+
+            # fix utilities?
+            rgb_full_post[rgb_full_post.sum(axis=2) == 0] = rgb_room_raw[rgb_full_post.sum(axis=2) == 0]
+            rgb_full_post = fill_holes(rgb_full_post)
+
+            pred_image = Image.fromarray(rgb_full_post.astype(np.uint8))
+            plt.imshow(pred_image)
+            plt.show()
 
             # plot
             # if False:
             # plt.figure(figsize=(8, 6), dpi=80)
-            plt.subplot(1, 5, 1)
-            plt.title("input: pad")
-            plt.imshow(orig[:, :, ::-1])
-            plt.axis('off')
-            plt.subplot(1, 5, 2)
-            plt.title("combined")
-            plt.imshow(rgb_full)
-            plt.axis('off')
-            plt.subplot(1, 5, 3)
-            plt.title("room")
-            plt.imshow(rgb_room_raw)
-            plt.axis('off')
-            plt.subplot(1, 5, 4)
-            plt.title("room post")
-            plt.imshow(rgb_room_post)
-            plt.axis('off')
-            plt.subplot(1, 5, 5)
-            plt.title("boundary")
-            plt.imshow(rgb_boundary)
-            plt.axis('off')
-
-            file_name = file[file.rfind("/") + 1:file.rfind(".")]
-            plt.savefig(args.dst_dir + f"/{file_name}_grid.png", bbox_inches='tight', dpi=450)
-            plt.clf()
-            # plt.show()
+            # plt.subplot(1, 5, 1)
+            # plt.title("input: pad")
+            # plt.imshow(orig[:, :, ::-1])
+            # plt.axis('off')
+            # plt.subplot(1, 5, 2)
+            # plt.title("combined")
+            # plt.imshow(rgb_full)
+            # plt.axis('off')
+            # plt.subplot(1, 5, 3)
+            # plt.title("room")
+            # plt.imshow(rgb_room_raw)
+            # plt.axis('off')
+            # plt.subplot(1, 5, 4)
+            # plt.title("room post")
+            # plt.imshow(rgb_room_post)
+            # plt.axis('off')
+            # plt.subplot(1, 5, 5)
+            # plt.title("boundary")
+            # plt.imshow(rgb_boundary)
+            # plt.axis('off')
+            #
+            # file_name = file[file.rfind("/") + 1:file.rfind(".")]
+            # plt.savefig(args.dst_dir + f"/{file_name}_grid.png", bbox_inches='tight', dpi=450)
+            # plt.clf()
+            # # plt.show()
             gc.collect()
             # grid_image = image_grid([orig, rgb_room, predboundary], rows=1, cols=3)
             # file_name = file[file.rfind("/") + 1:file.rfind(".")]
@@ -253,7 +267,7 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser()
     # SPECIFY INPUT NAME FOR EXP !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     p.add_argument('--weights_path', type=str,
-                   default="/home/artermiloff/PycharmProjects/PyTorch-DeepFloorplan/experiment_logs/FPR_433_v1_all_rooms_BIGGER_ROOM_LOSS_4_NOFREEZE_ROT60_EP80/train_20230312_140206/checkpoints/model_epoch079_loss1230.pt")
+                   default="/home/artermiloff/PycharmProjects/PyTorch-DeepFloorplan/experiment_logs/v1/FPR_433_v1_all_rooms_BIGGER_ROOM_LOSS_4_NOFREEZE_ROT60_EP80/train_20230312_140206/checkpoints/model_epoch079_loss1230.pt")
     p.add_argument('--room_channels', type=int, default=7)
     p.add_argument('--boundary_channels', type=int, default=5)
     p.add_argument('--src_dir', type=str,
